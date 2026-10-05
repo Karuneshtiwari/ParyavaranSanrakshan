@@ -90,6 +90,7 @@ export const binAPI = {
   getCollectors: () => api.get('/bins/collectors'),
   assignCollector: (binId, data) => api.post(`/bins/${binId}/assign`, data),
   simulateUpdate: () => api.post('/bins/simulate-update'),
+  delete: (id) => api.delete(`/bins/${id}`),
 };
 
 export const dashboardAPI = {

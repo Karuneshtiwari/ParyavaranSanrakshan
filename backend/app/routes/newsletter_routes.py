@@ -123,3 +123,54 @@ def broadcast_bulk_email(
         "target_audience": audience,
         "message": f"Successfully scheduled broadcast dispatch to {len(emails_list)} recipient(s)."
     }
+
+
+@router.post("/send-broadcast")
+@router.post("/send-direct")
+def send_admin_direct_or_broadcast(
+    data: dict,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    """
+    Handles both direct emails to individual users and group-based broadcast dispatches.
+    """
+    subject = data.get("subject") or "Official Communication from ParyavaranSanrakshan"
+    message = data.get("message") or data.get("content") or ""
+    recipient_email = data.get("recipient_email") or data.get("email")
+    recipient_group = (data.get("recipient_group") or "ALL").upper()
+
+    recipients = []
+    if recipient_email:
+        recipients.append(recipient_email.strip().lower())
+    else:
+        if recipient_group in ("CITIZENS", "CITIZEN", "ALL"):
+            citizens = db.query(User.email).filter(func.lower(User.role) == "citizen").all()
+            for c in citizens:
+                if c[0]: recipients.append(c[0].strip().lower())
+        if recipient_group in ("COLLECTORS", "COLLECTOR", "ALL"):
+            collectors = db.query(User.email).filter(func.lower(User.role) == "collector").all()
+            for c in collectors:
+                if c[0]: recipients.append(c[0].strip().lower())
+        if recipient_group in ("NEWSLETTER", "SUBSCRIBERS", "ALL"):
+            subs = db.query(NewsletterSubscriber.email).all()
+            for s in subs:
+                if s[0]: recipients.append(s[0].strip().lower())
+
+    recipients = list(set(recipients))
+    if recipients:
+        send_bulk_broadcast_email(
+            recipients=recipients,
+            subject=subject,
+            heading="Official Administrative Communication",
+            content=message,
+            badge_text="OFFICIAL DISPATCH",
+            template_type="custom"
+        )
+
+    return {
+        "status": "success",
+        "dispatched_count": len(recipients),
+        "message": f"Successfully dispatched official message to {len(recipients)} recipient(s)."
+    }
+

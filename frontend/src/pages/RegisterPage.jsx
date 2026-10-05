@@ -431,7 +431,7 @@ export const RegisterPage = () => {
                 </div>
 
                 <a
-                  href={`/api/auth/google/login?role=${role === 'COLLECTOR' ? 'collector' : 'citizen'}`}
+                  href={`${import.meta.env.VITE_API_BASE_URL || ''}/api/auth/google/login?role=${role === 'COLLECTOR' ? 'collector' : 'citizen'}`}
                   className="w-full py-2.5 px-4 rounded-xl border border-slate-300 hover:border-slate-400 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs sm:text-sm shadow-2xs transition-all flex items-center justify-center gap-3 active:scale-98 cursor-pointer"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24">

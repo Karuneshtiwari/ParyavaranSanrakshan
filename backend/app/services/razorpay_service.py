@@ -13,12 +13,14 @@ from backend.app.config import settings
 
 def get_razorpay_client():
     """Initializes and returns the Razorpay client using configured backend credentials."""
-    if not settings.RAZORPAY_KEY_ID or not settings.RAZORPAY_KEY_SECRET:
+    key_id = (settings.RAZORPAY_KEY_ID or "").strip()
+    key_secret = (settings.RAZORPAY_KEY_SECRET or "").strip()
+    if not key_id or not key_secret:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Razorpay payment gateway is not properly configured on the server."
+            detail="Razorpay payment gateway is not properly configured on the server. Please ensure RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are set in environment variables."
         )
-    return razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+    return razorpay.Client(auth=(key_id, key_secret))
 
 
 def create_razorpay_order(amount_inr: float, receipt: str, notes: dict = None) -> dict:
@@ -60,7 +62,7 @@ def create_razorpay_order(amount_inr: float, receipt: str, notes: dict = None) -
             "amount": amount_inr,
             "amount_paise": amount_paise,
             "currency": order["currency"],
-            "razorpay_key_id": settings.RAZORPAY_KEY_ID
+            "razorpay_key_id": key_id
         }
     except Exception as e:
         print(f"[!] Razorpay Order Creation Error: {e}")

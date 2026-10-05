@@ -771,7 +771,7 @@ def delete_user(
         )
 
     # Clean up dependent records safely
-    from backend.app.models.all_models import EventRegistration, WasteScan, Bin, CollectionHistory, ActivityLog
+    from backend.app.models.all_models import EventRegistration, WasteScan, Bin, Collection, Donation
     try:
         db.query(EventRegistration).filter(EventRegistration.user_id == user_id).delete()
         db.query(WasteScan).filter(WasteScan.user_id == user_id).update({"user_id": None})
@@ -779,8 +779,8 @@ def delete_user(
             "assigned_collector_id": None,
             "assigned_collector_name": None
         })
-        db.query(CollectionHistory).filter(CollectionHistory.collector_id == user_id).update({"collector_id": None})
-        db.query(ActivityLog).filter(ActivityLog.user_id == user_id).update({"user_id": None})
+        db.query(Collection).filter(Collection.collector_id == user_id).update({"collector_id": None})
+        db.query(Donation).filter(Donation.user_id == user_id).update({"user_id": None})
         db.query(OTPVerification).filter(OTPVerification.email == target_user.email).delete()
     except Exception as e:
         print(f"[!] User cascade cleanup notice: {e}")

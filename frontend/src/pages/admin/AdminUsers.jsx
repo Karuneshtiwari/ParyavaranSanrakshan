@@ -99,8 +99,8 @@ export const AdminUsers = () => {
 
     setMailSending(true);
     try {
-      await api.post('/newsletter/send-broadcast', {
-        recipient_group: 'CITIZENS',
+      await api.post('/newsletter/send-direct', {
+        recipient_email: selectedUserForMail.email,
         subject: mailSubject.trim(),
         message: mailMessage.trim()
       });

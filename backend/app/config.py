@@ -62,13 +62,13 @@ class Settings(BaseSettings):
     ADMIN_NAME: str = "Karunesh Tiwari"
 
     # Razorpay Payment Gateway (Test Mode / Live Mode)
-    RAZORPAY_KEY_ID: str = os.getenv("RAZORPAY_KEY_ID", "")
+    RAZORPAY_KEY_ID: str = os.getenv("RAZORPAY_KEY_ID", "rzp_test_SZLUdIkWkTqG6F")
     RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "")
 
     # Google OAuth
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
-    GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback")
+    GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI", "https://paryavaransanrakshan.onrender.com/api/auth/google/callback")
     
     # Frontend URL for verification links
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")

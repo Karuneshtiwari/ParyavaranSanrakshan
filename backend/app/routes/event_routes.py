@@ -349,6 +349,11 @@ def delete_event(
     if not ev:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found.")
 
+    try:
+        db.query(EventRegistration).filter(EventRegistration.event_id == event_id).delete()
+    except Exception as e:
+        print(f"[!] Event registration cleanup notice: {e}")
+
     db.delete(ev)
     db.commit()
     return {"message": "Event deleted successfully.", "deleted_id": event_id}

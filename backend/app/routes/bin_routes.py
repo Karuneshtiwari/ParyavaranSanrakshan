@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from backend.app.database import get_db
-from backend.app.models.all_models import Bin, SensorReading, Prediction, User
+from backend.app.models.all_models import Bin, SensorReading, Prediction, User, Collection
 from backend.app.schemas.schemas import BinResponse, BinCreate, BinAssignRequest
 from backend.app.services.auth_service import require_role
 from backend.app.services.prediction_service import predict_bin_telemetry
@@ -152,6 +152,30 @@ def update_bin(
     db.commit()
     db.refresh(bin_obj)
     return enrich_bin(bin_obj, db)
+
+
+@router.delete("/{bin_id}")
+def delete_bin(
+    bin_id: int,
+    db: Session = Depends(get_db),
+    admin_user=Depends(require_role(["ADMIN"]))
+):
+    """Safely delete a municipal bin and cascade-remove its dependent readings, predictions, and collections."""
+    bin_obj = db.query(Bin).filter(Bin.id == bin_id).first()
+    if not bin_obj:
+        raise HTTPException(status_code=404, detail="Bin not found")
+
+    try:
+        db.query(SensorReading).filter(SensorReading.bin_id == bin_id).delete()
+        db.query(Prediction).filter(Prediction.bin_id == bin_id).delete()
+        db.query(Collection).filter(Collection.bin_id == bin_id).delete()
+    except Exception as e:
+        print(f"[!] Bin cascade cleanup notice: {e}")
+
+    code = bin_obj.bin_code
+    db.delete(bin_obj)
+    db.commit()
+    return {"message": f"Bin {code} successfully removed.", "deleted_id": bin_id}
 
 
 @router.post("/simulate-update")
