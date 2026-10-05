@@ -44,6 +44,7 @@ def create_razorpay_order(amount_inr: float, receipt: str, notes: dict = None) -
         )
 
     amount_paise = int(round(amount_inr * 100))
+    key_id = (settings.RAZORPAY_KEY_ID or _DEFAULT_RZP_ID).strip()
     client = get_razorpay_client()
 
     try:
