@@ -552,17 +552,25 @@ export const ScannerPage = ({ isEmbedded = false }) => {
               <div className="mt-3 space-y-1.5">
                 <div className="flex items-center justify-between text-xs sm:text-sm font-semibold">
                   <span className="text-slate-600">Model Confidence</span>
-                  <span className="text-emerald-800 font-mono font-bold">
-                    {(result.confidence * 100).toFixed(1)}% Confidence
+                  <span className={`${result.confidence < 0.60 ? 'text-amber-700' : 'text-emerald-800'} font-mono font-bold`}>
+                    {(result.confidence * 100).toFixed(1)}% Confidence ({result.confidence_level || (result.confidence >= 0.8 ? 'HIGH' : result.confidence >= 0.6 ? 'MEDIUM' : 'LOW')})
                   </span>
                 </div>
                 <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
                   <div
-                    className="bg-[#10b981] h-3 rounded-full transition-all duration-700"
+                    className={`${result.confidence < 0.60 ? 'bg-amber-500' : 'bg-[#10b981]'} h-3 rounded-full transition-all duration-700`}
                     style={{ width: `${Math.min(100, result.confidence * 100)}%` }}
                   ></div>
                 </div>
               </div>
+
+              {/* Warning Notice if Low / Medium Confidence */}
+              {result.warning && (
+                <div className="mt-3 p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-center gap-2.5 shadow-2xs">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span className="font-medium">{result.warning}</span>
+                </div>
+              )}
             </div>
 
             {/* Waste Category Box */}

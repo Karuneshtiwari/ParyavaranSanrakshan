@@ -19,8 +19,8 @@ export class ErrorBoundary extends React.Component {
       return (
         <div className="min-h-screen bg-[#f7faf7] text-slate-800 flex items-center justify-center p-6">
           <div className="bg-white rounded-3xl max-w-md w-full p-8 border border-emerald-200 shadow-xl text-center space-y-4">
-            <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center mx-auto text-2xl font-bold">
-              🌱
+            <div className="w-16 h-16 rounded-2xl bg-white border border-emerald-200 p-2 flex items-center justify-center mx-auto shadow-xs">
+              <img src="/logo.png" alt="ParyavaranSanrakshan Logo" className="w-full h-full object-contain" />
             </div>
             <h2 className="text-xl font-bold font-serif text-[#12372A]">
               Something went slightly off

@@ -51,14 +51,25 @@ export const DonationModal = () => {
       return;
     }
 
+    if (!donorName.trim() || donorName.trim().length < 2) {
+      setError('Please provide your Full Name before proceeding with the donation.');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!donorEmail.trim() || !emailRegex.test(donorEmail.trim())) {
+      setError('Please enter a valid Email address to receive your official donation receipt.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
       const res = await donationAPI.createOrder({
         amount: activeAmount,
-        donor_name: donorName.trim() || user?.name || 'Supporter',
-        donor_email: donorEmail.trim() || user?.email || undefined
+        donor_name: donorName.trim(),
+        donor_email: donorEmail.trim()
       });
 
       const orderData = res.data;

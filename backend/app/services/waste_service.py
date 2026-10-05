@@ -1,7 +1,7 @@
 """
 Waste Classification AI Service.
-Performs real PyTorch inference using the fine-tuned MobileNetV3-Small model.
-Evaluates confidence and applies municipal disposal categorization rules.
+Performs real PyTorch transfer learning inference using MobileNetV3-Small (7 classes).
+Evaluates confidence thresholds and applies municipal segregation recommendations.
 """
 
 import os
@@ -14,16 +14,42 @@ from PIL import Image
 from fastapi import HTTPException, status
 from backend.app.config import settings
 
-CLASSES = ["cardboard", "glass", "metal", "paper", "plastic", "trash"]
+DEFAULT_CLASSES = ["cardboard", "glass", "metal", "paper", "plastic", "trash", "organic"]
 
 _waste_model = None
+_class_names = None
 _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 transform_pipeline = transforms.Compose([
-    transforms.Resize((224, 224)),
+    transforms.Resize((256, 256)),
+    transforms.CenterCrop(224),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
+
+
+def get_class_names():
+    global _class_names
+    if _class_names is not None:
+        return _class_names
+
+    # Check candidates
+    candidates = [
+        os.path.join(settings.BASE_DIR, "..", "ml", "models", "waste_classifier", "class_names.json"),
+        os.path.join(settings.BASE_DIR, "models", "waste_classifier", "class_names.json"),
+        os.path.join(settings.BASE_DIR, "..", "ml", "models", "class_names.json"),
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            try:
+                with open(c, "r") as f:
+                    _class_names = json.load(f)
+                    return _class_names
+            except Exception:
+                pass
+
+    _class_names = DEFAULT_CLASSES
+    return _class_names
 
 
 def load_waste_model():
@@ -31,27 +57,37 @@ def load_waste_model():
     if _waste_model is not None:
         return _waste_model
 
-    model_path = settings.WASTE_MODEL_PATH
-    if not os.path.exists(model_path):
-        # Fallback check in ml/models
-        alt_path = os.path.join(settings.BASE_DIR, "..", "ml", "models", "waste_classifier_mobilenetv3.pt")
-        if os.path.exists(alt_path):
-            model_path = alt_path
-        else:
-            print(f"[!] Waste model artifact not found at {model_path}. Waiting for training completion.")
-            return None
+    classes = get_class_names()
+    num_classes = len(classes)
+
+    candidate_paths = [
+        os.path.join(settings.BASE_DIR, "..", "ml", "models", "waste_classifier", "model.pt"),
+        os.path.join(settings.BASE_DIR, "models", "waste_classifier", "model.pt"),
+        os.path.join(settings.BASE_DIR, "..", "ml", "models", "waste_classifier_mobilenetv3.pt"),
+        settings.WASTE_MODEL_PATH
+    ]
+
+    model_path = None
+    for p in candidate_paths:
+        if os.path.exists(p):
+            model_path = p
+            break
+
+    if not model_path:
+        print(f"[!] Waste model artifact not found in candidate paths. Waiting for training completion.")
+        return None
 
     try:
         model = models.mobilenet_v3_small(weights=None)
         num_ftrs = model.classifier[3].in_features
-        model.classifier[3] = nn.Linear(num_ftrs, len(CLASSES))
-        
+        model.classifier[3] = nn.Linear(num_ftrs, num_classes)
+
         state_dict = torch.load(model_path, map_location=_device)
         model.load_state_dict(state_dict)
         model.to(_device)
         model.eval()
         _waste_model = model
-        print(f"[SUCCESS] Loaded waste classifier model from {model_path} onto {_device}")
+        print(f"[SUCCESS] Loaded 7-class waste classifier model from {model_path} onto {_device}")
         return _waste_model
     except Exception as e:
         print(f"[!] Error loading waste classifier: {e}")
@@ -60,10 +96,12 @@ def load_waste_model():
 
 def predict_waste_image(image_bytes: bytes) -> dict:
     model = load_waste_model()
+    classes = get_class_names()
+
     if model is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Waste classification ML model is currently loading or training. Please retry shortly."
+            detail="Waste classification ML model is currently initializing. Please retry shortly."
         )
 
     try:
@@ -81,54 +119,79 @@ def predict_waste_image(image_bytes: bytes) -> dict:
         probabilities = torch.softmax(outputs, dim=1)[0]
         confidence, pred_idx = torch.max(probabilities, 0)
         confidence_val = float(confidence.item())
-        pred_class = CLASSES[pred_idx.item()]
+        pred_class = classes[pred_idx.item()]
 
-    # Organic waste detection heuristic (food scraps, fruit peels, leaves, vegetables)
-    w, h = image.size
-    crop_box = (int(w * 0.2), int(h * 0.2), int(w * 0.8), int(h * 0.8))
-    center_img = image.crop(crop_box).resize((50, 50))
-    pixels = list(center_img.getdata())
-    total_pix = len(pixels)
-    organic_count = sum(1 for r, g, b in pixels if (g > r * 1.15 and g > b * 1.15) or (r > 120 and g > 80 and b < 70 and r > b * 1.5))
-    organic_ratio = organic_count / max(total_pix, 1)
+    # Specific Category and Recommendation Mappings
+    CATEGORY_DETAILS = {
+        "cardboard": {
+            "category": "Recyclable / Dry Waste",
+            "bin_color": "Blue",
+            "recommendation": "Flatten cardboard boxes and deposit in the dry recyclable bin."
+        },
+        "glass": {
+            "category": "Recyclable / Glass Waste",
+            "bin_color": "Blue",
+            "recommendation": "Handle with care to avoid shattering. Place in designated glass collection bin."
+        },
+        "metal": {
+            "category": "Recyclable / Metal Waste",
+            "bin_color": "Blue",
+            "recommendation": "Rinse metal cans and deposit in scrap or metal recycling stream."
+        },
+        "paper": {
+            "category": "Recyclable / Paper Waste",
+            "bin_color": "Blue",
+            "recommendation": "Ensure paper is dry, uncontaminated, and deposit in paper recycling."
+        },
+        "plastic": {
+            "category": "Recyclable / Plastic Waste",
+            "bin_color": "Blue",
+            "recommendation": "Rinse empty bottles/containers, crush to save space, and place in recyclables."
+        },
+        "organic": {
+            "category": "Organic / Compostable Waste",
+            "bin_color": "Green",
+            "recommendation": "Deposit in green wet-waste bin or home composting unit. Highly biodegradable."
+        },
+        "trash": {
+            "category": "General / Residual Reject Waste",
+            "bin_color": "Black",
+            "recommendation": "Dispose of in the general waste bin. Non-recyclable residual waste."
+        }
+    }
 
-    if organic_ratio > 0.30 and (pred_class in ["trash", "paper"] or confidence_val < 0.85):
-        pred_class = "organic"
-        confidence_val = max(0.89, confidence_val)
-        confidence_level = "HIGH"
-        warning = None
+    details = CATEGORY_DETAILS.get(pred_class, {
+        "category": "General Waste",
+        "bin_color": "Green",
+        "recommendation": "Deposit in designated segregation unit as per municipal rules."
+    })
 
-    # Confidence Thresholding
+    # Confidence evaluation and polite detection messaging
     if confidence_val >= 0.80:
         confidence_level = "HIGH"
         warning = None
+        recommendation = details["recommendation"]
     elif confidence_val >= 0.60:
         confidence_level = "MEDIUM"
-        warning = "Moderate prediction confidence. Ensure lighting is clear."
+        warning = "Moderate prediction confidence. Please verify the waste item manually."
+        recommendation = details["recommendation"]
     else:
         confidence_level = "LOW"
-        warning = "AI is uncertain about this image. Please upload a clearer image."
-
-    # Disposal mapping
-    mapping = settings.CATEGORY_MAPPING.get(pred_class, {
-        "category": "General / Mixed Waste",
-        "bin_color": "Green",
-        "action": "Deposit in green wet-waste bin or home composting unit."
-    })
+        warning = "Low confidence prediction. Unable to reliably detect waste item. Please verify manually or re-scan in better lighting."
+        recommendation = f"Item uncertain ({pred_class.capitalize()}). Unable to identify clearly as per dataset. Please check local municipal guidelines or segregate manually."
 
     probabilities_dict = {
-        CLASSES[i]: round(float(probabilities[i].item()), 4) for i in range(len(CLASSES))
+        classes[i]: round(float(probabilities[i].item()), 4) for i in range(len(classes))
     }
-    if pred_class == "organic":
-        probabilities_dict["organic"] = round(confidence_val, 4)
 
     return {
         "predicted_class": pred_class,
         "confidence": round(confidence_val, 4),
         "confidence_level": confidence_level,
-        "category": mapping["category"],
-        "bin_color": mapping["bin_color"],
-        "recommendation": mapping["action"],
+        "category": details["category"],
+        "bin_color": details["bin_color"],
+        "recommendation": recommendation,
         "warning": warning,
+        "disclaimer": "Local municipal waste segregation guidelines may vary slightly by ward or municipal corporation.",
         "all_probabilities": probabilities_dict
     }

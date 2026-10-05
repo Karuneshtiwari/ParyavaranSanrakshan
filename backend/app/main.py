@@ -68,6 +68,14 @@ def on_startup():
         seed_database(db)
     finally:
         db.close()
+
+    # Preload Waste Classification AI Model
+    try:
+        from backend.app.services.waste_service import load_waste_model
+        load_waste_model()
+    except Exception as e:
+        print(f"[!] Waste model preloading notice: {e}")
+
     print(f"[SUCCESS] {settings.PROJECT_NAME} Backend initialized successfully.")
 
 

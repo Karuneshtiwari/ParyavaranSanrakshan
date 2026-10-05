@@ -37,4 +37,6 @@ Thumbs.db
 
 # Large Datasets (keep scripts and models only)
 data/trashnet.zip
+data/dataset-resized/
 ml/data/*.zip
+ml/data/waste_splits_7class.json

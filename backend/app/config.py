@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI", "https://paryavaransanrakshan.onrender.com/api/auth/google/callback")
     
     # Frontend URL for verification links
-    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "https://paryavaran-sanrakshan.vercel.app")
     
     # CORS Origins (Vercel Frontend, Localhost)
     CORS_ORIGINS: Union[str, List[str]] = [
