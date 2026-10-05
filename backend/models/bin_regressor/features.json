@@ -1,0 +1,12 @@
+[
+  "fill_level",
+  "previous_fill_level",
+  "fill_change_rate",
+  "hour",
+  "day_of_week",
+  "is_weekend",
+  "location",
+  "waste_type",
+  "hours_since_collection",
+  "temperature"
+]
