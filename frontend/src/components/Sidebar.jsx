@@ -49,7 +49,7 @@ export const Sidebar = ({ role = "ADMIN" }) => {
   const links = role === "COLLECTOR" ? collectorLinks : adminLinks;
 
   return (
-    <aside className="w-64 bg-[#12372A] text-slate-200 min-h-[calc(100vh-5rem)] p-4 flex flex-col justify-between hidden md:flex shrink-0 shadow-lg border-r border-emerald-950">
+    <aside className="w-64 bg-[#12372A] text-slate-200 h-screen sticky top-0 p-4 flex flex-col justify-between hidden md:flex shrink-0 shadow-lg border-r border-emerald-950 overflow-y-auto scrollbar-thin scrollbar-thumb-emerald-900">
       
       {/* Top Brand & Nav */}
       <div className="space-y-6">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { dashboardAPI, collectionAPI, uploadAPI, authAPI, eventAPI } from '../../services/api';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
@@ -11,7 +11,8 @@ import {
   Calendar, RotateCcw, ShieldCheck, Flame, LayoutDashboard,
   History, Heart, User, Settings, LogOut, Bell, Upload,
   Compass, Crosshair, BarChart2, Activity, Home, Filter,
-  Check, Phone, Mail, Award, TrendingUp, Sparkles, Volume2
+  Check, Phone, Mail, Award, TrendingUp, Sparkles, Volume2,
+  Camera, RefreshCw
 } from 'lucide-react';
 
 // Leaflet Map centering helper
@@ -405,9 +406,32 @@ export const CollectorDashboard = ({ initialTab = 'dashboard' }) => {
     }
   };
 
+  // Live Collection logs state
+  const [collectionLogs, setCollectionLogs] = useState([]);
+  const [collectionLogsLoading, setCollectionLogsLoading] = useState(false);
+
+  const fetchCollectionLogs = async () => {
+    try {
+      setCollectionLogsLoading(true);
+      const res = await collectionAPI.getAll(50);
+      setCollectionLogs(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error("Failed to load collection logs:", err);
+    } finally {
+      setCollectionLogsLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchRealData();
+    fetchCollectionLogs();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'history') {
+      fetchCollectionLogs();
+    }
+  }, [activeTab]);
 
   // Update profile states if auth user changes
   useEffect(() => {
@@ -428,6 +452,8 @@ export const CollectorDashboard = ({ initialTab = 'dashboard' }) => {
 
     try {
       await collectionAPI.markCollected(target.id, 10.0);
+      // Immediately refresh live audit logs
+      fetchCollectionLogs();
     } catch (err) {
       console.log("Collection API dispatch:", err);
     }
@@ -452,6 +478,8 @@ export const CollectorDashboard = ({ initialTab = 'dashboard' }) => {
       setCollectedCount(c => c + 1);
       setCollectingId(null);
       setActionNotice(`Bin ${target.bin_code} (${target.name}) marked as collected! Fill level updated to 10% on Admin Central.`);
+      // Refresh telemetry data from server as well
+      fetchRealData();
     }, 450);
   };
 
@@ -537,11 +565,11 @@ export const CollectorDashboard = ({ initialTab = 'dashboard' }) => {
     <div className="min-h-screen bg-[#f4f7f4] flex text-slate-800 font-sans selection:bg-emerald-600 selection:text-white">
       
       {/* ══════════════════════════════════════════════════════════════════════
-          LEFT SIDEBAR (MATCHING SAMPLE IMAGE 2 EXACTLY: DEEP DARK EMERALD)
+          LEFT SIDEBAR (MATCHING ADMIN DASHBOARD EXACTLY: RICH FOREST EMERALD #12372A)
       ══════════════════════════════════════════════════════════════════════ */}
       <aside className={`
-        fixed inset-y-0 left-0 z-50 w-64 bg-[#072617] text-slate-200 p-4 sm:p-5 flex flex-col justify-between shrink-0 shadow-2xl border-r border-emerald-950/80 transition-transform duration-300 ease-in-out
-        md:translate-x-0 md:static md:h-screen md:sticky md:top-0
+        fixed inset-y-0 left-0 z-50 w-64 bg-[#12372A] text-slate-200 p-4 sm:p-5 flex flex-col justify-between shrink-0 shadow-2xl border-r border-emerald-950 transition-transform duration-300 ease-in-out
+        md:translate-x-0 md:static md:h-screen md:sticky md:top-0 overflow-y-auto scrollbar-thin scrollbar-thumb-emerald-900
         ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         
@@ -585,7 +613,7 @@ export const CollectorDashboard = ({ initialTab = 'dashboard' }) => {
                   }}
                   className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all text-left cursor-pointer ${
                     isActive
-                      ? "bg-[#114328] text-white font-semibold shadow-inner border-l-4 border-emerald-400"
+                      ? "bg-[#1b4332] text-white font-semibold shadow-inner border-l-4 border-emerald-400"
                       : "text-emerald-100/70 hover:text-white hover:bg-white/5"
                   }`}
                 >
@@ -597,8 +625,8 @@ export const CollectorDashboard = ({ initialTab = 'dashboard' }) => {
           </nav>
         </div>
 
-        {/* Bottom Section: Foliage Illustration + Sacred Quote + Logout (Image 2) */}
-        <div className="space-y-4 pt-4 border-t border-emerald-900/60">
+        {/* Bottom Section: Goals Card + AI Scanner + Portal Label + Logout (Inside Green Area Matching Admin) */}
+        <div className="space-y-4 pt-4 border-t border-emerald-900/60 mt-4">
           
           {/* Sustainable Development Goals Card with goals.png */}
           <div className="p-3 rounded-2xl bg-white/5 border border-emerald-800/50 text-center space-y-2 group hover:border-emerald-600/50 transition-colors">
@@ -614,17 +642,26 @@ export const CollectorDashboard = ({ initialTab = 'dashboard' }) => {
                 "Collect Today<br />for a Cleaner Tomorrow"
               </p>
               <span className="text-[10px] text-amber-300 font-semibold block pt-0.5">
-                ॥ माता भूमि: पुत्रों अहम् ॥
+                || माता भूमि: पुत्रों अहम् पृथिव्या: ||
               </span>
             </div>
           </div>
 
-          {/* Collector Portal Title (White color font at bottom above logout) */}
+          {/* In-dashboard link to AI Scanner */}
+          <Link
+            to="/scanner"
+            className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-emerald-200/80 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+          >
+            <Camera className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Launch AI Scanner</span>
+          </Link>
+
+          {/* Collector Portal Title (White color font inside green area directly above logout, matching Admin) */}
           <div className="text-center font-bold text-white text-xs tracking-wider uppercase py-1 border-t border-emerald-900/60">
             Collector Portal
           </div>
 
-          {/* Logout Button */}
+          {/* Logout Button (Directly inside green sidebar container, matching Admin) */}
           <button
             onClick={handleLogout}
             className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-rose-300 hover:text-white hover:bg-rose-950/40 transition-colors cursor-pointer"
@@ -1530,46 +1567,87 @@ export const CollectorDashboard = ({ initialTab = 'dashboard' }) => {
 
           {/* ══════════════════════════════════════════════════════════════════════
               TAB 5: COLLECTION HISTORY
+          {/* ══════════════════════════════════════════════════════════════════════
+              TAB 5: COLLECTION HISTORY (LIVE AUDIT LOGS WITH REFRESH)
           ══════════════════════════════════════════════════════════════════════ */}
           {activeTab === 'history' && (
             <div className="space-y-6 animate-in fade-in duration-200">
-              <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-4">
-                <div>
-                  <h2 className="text-xl font-bold font-serif text-slate-900">Collection Logs & History</h2>
-                  <p className="text-xs text-slate-500">Verified municipal waste clearance events and truck load logs</p>
+              <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-5">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold mb-1">
+                      <History className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Live Audit Logs • Bengaluru Central</span>
+                    </div>
+                    <h2 className="text-xl sm:text-2xl font-bold font-serif text-slate-900">Collection Logs & History</h2>
+                    <p className="text-xs text-slate-500">Verified municipal waste clearance events, net fill reductions, and timestamped truck clearances.</p>
+                  </div>
+
+                  <button
+                    onClick={fetchCollectionLogs}
+                    disabled={collectionLogsLoading}
+                    className="px-4 py-2.5 rounded-full font-semibold text-xs border border-emerald-300 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-900 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 shadow-2xs"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 text-emerald-700 ${collectionLogsLoading ? 'animate-spin' : ''}`} />
+                    <span>{collectionLogsLoading ? 'Refreshing Logs...' : 'Refresh Logs'}</span>
+                  </button>
                 </div>
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase text-[10px]">
-                        <th className="pb-3 pl-3">Timestamp</th>
+                      <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+                        <th className="pb-3 pl-3">Log ID</th>
+                        <th className="pb-3">Timestamp</th>
                         <th className="pb-3">Bin Code</th>
                         <th className="pb-3">Location</th>
-                        <th className="pb-3">Waste Category</th>
-                        <th className="pb-3">Initial Fill</th>
-                        <th className="pb-3">Clearance Level</th>
+                        <th className="pb-3">Before Fill</th>
+                        <th className="pb-3">Clearance Fill</th>
+                        <th className="pb-3">Net Cleared</th>
+                        <th className="pb-3">Status</th>
                         <th className="pb-3 text-right pr-3">Verified By</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {[
-                        { time: "Today, 09:30 AM", code: "B002", loc: "University Food Court", cat: "General Waste", init: "96%", clear: "10%", by: "Collector Karunesh" },
-                        { time: "Today, 08:45 AM", code: "B007", loc: "Commercial High Street", cat: "Dry Recyclable", init: "92%", clear: "10%", by: "Collector Karunesh" },
-                        { time: "03 Oct, 04:15 PM", code: "B003", loc: "Student Residential Block", cat: "Organic Waste", init: "88%", clear: "8%", by: "Collector Karunesh" },
-                        { time: "03 Oct, 02:00 PM", code: "B008", loc: "HSR Layout Sector 1", cat: "Plastic & Metal", init: "85%", clear: "12%", by: "Collector Karunesh" },
-                        { time: "02 Oct, 11:30 AM", code: "B001", loc: "MG Road Metro Entrance", cat: "Paper & Cardboard", init: "78%", clear: "10%", by: "Collector Karunesh" },
-                      ].map((item, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50/80">
-                          <td className="py-3 pl-3 text-slate-500 font-medium">{item.time}</td>
-                          <td className="py-3 font-mono font-bold text-slate-900">{item.code}</td>
-                          <td className="py-3 font-semibold text-slate-800">{item.loc}</td>
-                          <td className="py-3 text-slate-600">{item.cat}</td>
-                          <td className="py-3 font-bold text-rose-600">{item.init}</td>
-                          <td className="py-3 font-bold text-emerald-600">{item.clear}</td>
-                          <td className="py-3 text-right pr-3 text-slate-700 font-medium">{item.by}</td>
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {collectionLogsLoading ? (
+                        <tr>
+                          <td colSpan="9" className="text-center py-8 text-slate-400">
+                            <div className="flex items-center justify-center gap-2">
+                              <RefreshCw className="w-4 h-4 animate-spin text-emerald-700" />
+                              <span>Loading latest collection logs...</span>
+                            </div>
+                          </td>
                         </tr>
-                      ))}
+                      ) : collectionLogs.length === 0 ? (
+                        <tr>
+                          <td colSpan="9" className="text-center py-10 text-slate-400">
+                            No collection events recorded yet. Mark a bin collected in Priority Bins to log your first verified clearance.
+                          </td>
+                        </tr>
+                      ) : (
+                        collectionLogs.map((item) => {
+                          const netDiff = Math.max(0, (item.before_fill || 0) - (item.after_fill || 0));
+                          return (
+                            <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="py-3 pl-3 font-mono text-slate-400">#{item.id}</td>
+                              <td className="py-3 text-slate-500 font-medium">
+                                {item.collection_time ? new Date(item.collection_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Just now'}
+                              </td>
+                              <td className="py-3 font-mono font-bold text-slate-900">{item.bin_code || `B00${item.bin_id}`}</td>
+                              <td className="py-3 font-semibold text-slate-800">{item.location_name || 'Bengaluru Transit Ward'}</td>
+                              <td className="py-3 font-bold text-rose-600 font-mono">{item.before_fill}%</td>
+                              <td className="py-3 font-bold text-emerald-600 font-mono">{item.after_fill}%</td>
+                              <td className="py-3 font-bold text-teal-700 font-mono">-{netDiff.toFixed(1)}%</td>
+                              <td className="py-3">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  {item.status || 'Completed'}
+                                </span>
+                              </td>
+                              <td className="py-3 text-right pr-3 text-slate-700 font-medium">{item.collector_name || 'Collector'}</td>
+                            </tr>
+                          );
+                        })
+                      )}
                     </tbody>
                   </table>
                 </div>

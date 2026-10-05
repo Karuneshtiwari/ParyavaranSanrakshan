@@ -82,6 +82,7 @@ export const wasteAPI = {
   }),
   getHistory: (limit = 50) => api.get(`/waste/history?limit=${limit}`),
   clearHistory: () => api.delete('/waste/history'),
+  deleteItem: (id) => api.delete(`/waste/history/${id}`),
 };
 
 export const binAPI = {

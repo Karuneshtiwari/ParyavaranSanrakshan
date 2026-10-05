@@ -139,9 +139,32 @@ def get_analytics(db: Session = Depends(get_db)):
         {"day": "Sun", "avg_fill": 77, "collections": 15, "overflow_alerts": 6}
     ]
 
+    # 5. AI Waste Scanner Breakdown across 7 classes
+    seven_classes = ["cardboard", "glass", "metal", "paper", "plastic", "trash", "organic"]
+    scan_counts = {c: 0 for c in seven_classes}
+    db_scans = db.query(WasteScan.predicted_class, func.count(WasteScan.id)).group_by(WasteScan.predicted_class).all()
+    for p_class, cnt in db_scans:
+        p_clean = (p_class or "").lower().strip()
+        if p_clean in scan_counts:
+            scan_counts[p_clean] += cnt
+        else:
+            scan_counts[p_clean] = cnt
+
+    total_scans = sum(scan_counts.values())
+    ai_waste_breakdown = [
+        {"name": k.capitalize(), "value": v, "category": k}
+        for k, v in scan_counts.items()
+    ]
+
+    total_collections_recorded = db.query(Collection).count()
+
     return {
         "waste_by_category": waste_by_category,
         "fill_by_location": fill_by_location,
         "risk_distribution": risk_distribution,
-        "daily_trends": daily_trends
+        "daily_trends": daily_trends,
+        "ai_waste_breakdown": ai_waste_breakdown,
+        "total_scans": total_scans,
+        "total_collections_recorded": total_collections_recorded
     }
+

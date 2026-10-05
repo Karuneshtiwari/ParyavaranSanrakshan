@@ -145,20 +145,100 @@ def get_scan_history(
     return scans
 
 
+from backend.app.services.cloudinary_service import upload_image, delete_image
+import os
+
+
+def extract_cloudinary_public_id(image_url: str, public_id: Optional[str] = None) -> Optional[str]:
+    """Extracts Cloudinary public ID for deletion from either stored ID or image URL."""
+    if public_id:
+        return public_id
+    if not image_url or "cloudinary.com" not in image_url:
+        return None
+    try:
+        parts = image_url.split("/upload/")
+        if len(parts) > 1:
+            path_after_upload = parts[1]
+            subparts = path_after_upload.split("/", 1)
+            if len(subparts) > 1 and subparts[0].startswith("v") and subparts[0][1:].isdigit():
+                pub_with_ext = subparts[1]
+            else:
+                pub_with_ext = path_after_upload
+            return os.path.splitext(pub_with_ext)[0]
+    except Exception:
+        pass
+    return None
+
+
 @router.delete("/history")
 def clear_scan_history(
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user)
 ):
-    """Allows users to erase their scan history from the platform."""
+    """
+    Allows users to erase their scan history from the platform.
+    Permanently deletes all associated photos from Cloudinary cloud storage as well.
+    """
+    query = db.query(WasteScan)
     if not current_user:
         # Clear anonymous / guest scans
-        db.query(WasteScan).filter(WasteScan.user_id == None).delete()
+        query = query.filter(WasteScan.user_id == None)
     elif current_user.role.lower() == "admin":
-        db.query(WasteScan).delete()
+        query = query
     else:
-        db.query(WasteScan).filter(WasteScan.user_id == current_user.id).delete()
-    
+        query = query.filter(WasteScan.user_id == current_user.id)
+
+    scans_to_delete = query.all()
+    deleted_images_count = 0
+
+    for scan in scans_to_delete:
+        pub_id = extract_cloudinary_public_id(scan.image_url, scan.image_public_id)
+        if pub_id:
+            try:
+                delete_image(pub_id)
+                deleted_images_count += 1
+            except Exception as e:
+                print(f"[!] Warning: Failed to delete Cloudinary image {pub_id}: {e}")
+
+        db.delete(scan)
+
     db.commit()
-    return {"message": "Scan history has been successfully cleared."}
+    return {
+        "message": f"Scan history cleared successfully ({len(scans_to_delete)} records removed, {deleted_images_count} cloud images deleted).",
+        "deleted_count": len(scans_to_delete),
+        "cloudinary_deleted": deleted_images_count
+    }
+
+
+@router.delete("/history/{scan_id}")
+def delete_single_scan(
+    scan_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user)
+):
+    """
+    Deletes an individual scan record by ID and permanently removes its image from Cloudinary.
+    """
+    scan = db.query(WasteScan).filter(WasteScan.id == scan_id).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan record not found.")
+
+    if current_user and current_user.role.lower() != "admin" and scan.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You do not have permission to delete this scan record.")
+
+    pub_id = extract_cloudinary_public_id(scan.image_url, scan.image_public_id)
+    if pub_id:
+        try:
+            delete_image(pub_id)
+        except Exception as e:
+            print(f"[!] Warning: Failed to delete Cloudinary image {pub_id}: {e}")
+
+    db.delete(scan)
+    db.commit()
+
+    return {
+        "message": f"Scan #{scan_id} and its cloud image have been deleted permanently.",
+        "id": scan_id
+    }
+
 

@@ -257,7 +257,7 @@ export const CitizenDashboard = () => {
   };
 
   const handleClearHistory = async () => {
-    if (!window.confirm("Are you sure you want to clear your entire waste scan history?")) return;
+    if (!window.confirm("Are you sure you want to clear your entire waste scan history? All uploaded photos will also be permanently removed from Cloudinary cloud storage.")) return;
     try {
       await wasteAPI.clearHistory();
       setScans([]);

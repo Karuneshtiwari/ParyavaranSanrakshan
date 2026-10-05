@@ -14,27 +14,28 @@ router = APIRouter(prefix="/models", tags=["Model Performance"])
 
 @router.get("/metrics")
 def get_all_model_metrics():
-    metrics_dir = settings.METRICS_DIR
-    
-    waste_metrics_file = os.path.join(metrics_dir, "waste_metrics.json")
-    bin_metrics_file = os.path.join(metrics_dir, "bin_metrics.json")
-    overflow_metrics_file = os.path.join(metrics_dir, "overflow_metrics.json")
+    search_dirs = [
+        settings.METRICS_DIR,
+        os.path.abspath(os.path.join(settings.BASE_DIR, "..", "ml", "evaluation")),
+        os.path.abspath(os.path.join(settings.BASE_DIR, "models", "metrics")),
+        "/app/ml/evaluation",
+        "/app/backend/models/metrics"
+    ]
 
-    waste_data = None
-    bin_data = None
-    overflow_data = None
+    def load_metric_file(filename: str):
+        for d in search_dirs:
+            p = os.path.join(d, filename)
+            if os.path.exists(p):
+                try:
+                    with open(p, "r") as f:
+                        return json.load(f)
+                except Exception:
+                    pass
+        return None
 
-    if os.path.exists(waste_metrics_file):
-        with open(waste_metrics_file, "r") as f:
-            waste_data = json.load(f)
-
-    if os.path.exists(bin_metrics_file):
-        with open(bin_metrics_file, "r") as f:
-            bin_data = json.load(f)
-
-    if os.path.exists(overflow_metrics_file):
-        with open(overflow_metrics_file, "r") as f:
-            overflow_data = json.load(f)
+    waste_data = load_metric_file("waste_metrics.json")
+    bin_data = load_metric_file("bin_metrics.json")
+    overflow_data = load_metric_file("overflow_metrics.json")
 
     if not waste_data and not bin_data and not overflow_data:
         raise HTTPException(status_code=404, detail="Model metrics have not been generated yet.")
