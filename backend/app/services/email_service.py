@@ -87,18 +87,64 @@ def format_email_rich_content(text: str) -> str:
     return full_html
 
 
-def _dispatch_smtp_background(msg: MIMEMultipart, to_email: str):
-    """Sends email via SMTP in a background thread to prevent blocking HTTP endpoints."""
+def _extract_html_content(msg: MIMEMultipart) -> str:
+    """Extract HTML or plain text content from a MIMEMultipart message."""
     try:
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as server:
+        if msg.is_multipart():
+            for part in msg.get_payload():
+                if part.get_content_type() == "text/html":
+                    return part.get_payload(decode=True).decode("utf-8", errors="ignore")
+                elif part.get_content_type() == "text/plain":
+                    return part.get_payload(decode=True).decode("utf-8", errors="ignore")
+        return str(msg)
+    except Exception:
+        return str(msg)
+
+
+def _dispatch_smtp_background(msg: MIMEMultipart, to_email: str):
+    """
+    Sends email asynchronously.
+    1. If BREVO_API_KEY is configured, sends via Brevo HTTPS REST API (Port 443 - works on Render without port blocking).
+    2. Otherwise, sends via standard Gmail SMTP.
+    3. If SMTP is blocked (e.g. Render free tier), logs advice without failing API responses.
+    """
+    # 1. Check Brevo HTTP API first (Works on Render without port restrictions)
+    if settings.BREVO_API_KEY:
+        try:
+            import requests
+            html_body = _extract_html_content(msg)
+            payload = {
+                "sender": {"name": settings.SMTP_FROM_NAME, "email": settings.SMTP_FROM_EMAIL},
+                "to": [{"email": to_email}],
+                "subject": msg["Subject"] or "ParyavaranSanrakshan Notification",
+                "htmlContent": html_body
+            }
+            headers = {
+                "api-key": settings.BREVO_API_KEY,
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+            resp = requests.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers, timeout=10)
+            if resp.status_code in (200, 201):
+                print(f"[EMAIL SUCCESS] Dispatched via Brevo HTTPS API to {to_email}")
+                return
+            else:
+                print(f"[BREVO API ERROR] Status {resp.status_code}: {resp.text}")
+        except Exception as be:
+            print(f"[BREVO HTTP EXCEPTION] {be}. Falling back to standard SMTP...")
+
+    # 2. Standard SMTP Dispatch
+    try:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=8) as server:
             server.ehlo()
             server.starttls()
             server.ehlo()
             server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
             server.sendmail(settings.SMTP_FROM_EMAIL, to_email, msg.as_string())
-        print(f"[EMAIL SUCCESS] Live email dispatched asynchronously to {to_email}")
+        print(f"[EMAIL SUCCESS] Live email dispatched via SMTP to {to_email}")
     except Exception as e:
-        print(f"[EMAIL ERROR] Background SMTP dispatch to {to_email} failed: {e}")
+        print(f"[EMAIL WARNING] Background SMTP dispatch to {to_email} failed: {e}")
+        print(f"[EMAIL ADVICE] On Render free tier, outbound SMTP ports 25/587 are restricted. To send live emails on Render, set BREVO_API_KEY (free at brevo.com), or retrieve the OTP from server console logs above.")
 
 
 def generate_otp(length: int = 6) -> str:

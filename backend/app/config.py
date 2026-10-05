@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")  # 16-digit Google App Password
     SMTP_FROM_NAME: str = "ParyavaranSanrakshan"
     SMTP_FROM_EMAIL: str = os.getenv("SMTP_FROM_EMAIL", "info.karuneshtiwari@gmail.com")
+    BREVO_API_KEY: str = os.getenv("BREVO_API_KEY", "")  # Free HTTPS REST Email API (works on Render without port blocking)
     
     # Cloudinary Credentials (Official Python SDK)
     CLOUDINARY_CLOUD_NAME: str = os.getenv("CLOUDINARY_CLOUD_NAME", "")
