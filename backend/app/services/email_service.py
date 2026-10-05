@@ -88,16 +88,24 @@ def format_email_rich_content(text: str) -> str:
 
 
 def _extract_html_content(msg: MIMEMultipart) -> str:
-    """Extract HTML or plain text content from a MIMEMultipart message."""
+    """Extract HTML content (preferring HTML over plain text) from a MIMEMultipart message."""
+    html_body = ""
+    plain_body = ""
     try:
         if msg.is_multipart():
             for part in msg.get_payload():
-                if part.get_content_type() == "text/html":
-                    return part.get_payload(decode=True).decode("utf-8", errors="ignore")
-                elif part.get_content_type() == "text/plain":
-                    return part.get_payload(decode=True).decode("utf-8", errors="ignore")
-        return str(msg)
-    except Exception:
+                ctype = part.get_content_type()
+                if ctype == "text/html":
+                    html_body = part.get_payload(decode=True).decode("utf-8", errors="ignore")
+                elif ctype == "text/plain":
+                    plain_body = part.get_payload(decode=True).decode("utf-8", errors="ignore")
+            if html_body:
+                return html_body
+            if plain_body:
+                return f"<pre style='font-family: sans-serif; font-size: 15px;'>{plain_body}</pre>"
+        return str(msg.get_payload())
+    except Exception as e:
+        print(f"[!] Error extracting email content: {e}")
         return str(msg)
 
 
@@ -105,46 +113,62 @@ def _dispatch_smtp_background(msg: MIMEMultipart, to_email: str):
     """
     Sends email asynchronously.
     1. If BREVO_API_KEY is configured, sends via Brevo HTTPS REST API (Port 443 - works on Render without port blocking).
+       Also includes automatic fallback to primary verified sender if the custom sender isn't verified in Brevo.
     2. Otherwise, sends via standard Gmail SMTP.
-    3. If SMTP is blocked (e.g. Render free tier), logs advice without failing API responses.
+    3. If SMTP is blocked (e.g. Render free tier), logs warning with OTP code advice.
     """
     # 1. Check Brevo HTTP API first (Works on Render without port restrictions)
-    if settings.BREVO_API_KEY:
+    if settings.BREVO_API_KEY and settings.BREVO_API_KEY.strip():
         try:
             import requests
             html_body = _extract_html_content(msg)
+            sender_email = (settings.SMTP_FROM_EMAIL or settings.SMTP_USER or "").strip()
+            sender_name = (settings.SMTP_FROM_NAME or "ParyavaranSanrakshan").strip()
+
             payload = {
-                "sender": {"name": settings.SMTP_FROM_NAME, "email": settings.SMTP_FROM_EMAIL},
+                "sender": {"name": sender_name, "email": sender_email},
                 "to": [{"email": to_email}],
                 "subject": msg["Subject"] or "ParyavaranSanrakshan Notification",
                 "htmlContent": html_body
             }
             headers = {
-                "api-key": settings.BREVO_API_KEY,
+                "api-key": settings.BREVO_API_KEY.strip(),
                 "Content-Type": "application/json",
                 "Accept": "application/json"
             }
-            resp = requests.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers, timeout=10)
+            resp = requests.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers, timeout=12)
             if resp.status_code in (200, 201):
                 print(f"[EMAIL SUCCESS] Dispatched via Brevo HTTPS API to {to_email}")
                 return
             else:
                 print(f"[BREVO API ERROR] Status {resp.status_code}: {resp.text}")
+                # Fallback: If Brevo rejected because sender_email is not verified, try SMTP_USER or ADMIN_EMAIL
+                fallback_sender = (settings.SMTP_USER or settings.ADMIN_EMAIL or "").strip()
+                if fallback_sender and fallback_sender.lower() != sender_email.lower():
+                    print(f"[BREVO RETRY] Retrying with account primary sender: {fallback_sender}")
+                    payload["sender"]["email"] = fallback_sender
+                    retry_resp = requests.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers, timeout=12)
+                    if retry_resp.status_code in (200, 201):
+                        print(f"[EMAIL SUCCESS] Dispatched via Brevo fallback sender ({fallback_sender}) to {to_email}")
+                        return
+                    else:
+                        print(f"[BREVO RETRY ERROR] Status {retry_resp.status_code}: {retry_resp.text}")
         except Exception as be:
             print(f"[BREVO HTTP EXCEPTION] {be}. Falling back to standard SMTP...")
 
     # 2. Standard SMTP Dispatch
-    try:
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=8) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-            server.sendmail(settings.SMTP_FROM_EMAIL, to_email, msg.as_string())
-        print(f"[EMAIL SUCCESS] Live email dispatched via SMTP to {to_email}")
-    except Exception as e:
-        print(f"[EMAIL WARNING] Background SMTP dispatch to {to_email} failed: {e}")
-        print(f"[EMAIL ADVICE] On Render free tier, outbound SMTP ports 25/587 are restricted. To send live emails on Render, set BREVO_API_KEY (free at brevo.com), or retrieve the OTP from server console logs above.")
+    if settings.SMTP_PASSWORD and settings.SMTP_PASSWORD.strip():
+        try:
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=8) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+                server.sendmail(settings.SMTP_FROM_EMAIL, to_email, msg.as_string())
+            print(f"[EMAIL SUCCESS] Live email dispatched via SMTP to {to_email}")
+        except Exception as e:
+            print(f"[EMAIL WARNING] Background SMTP dispatch to {to_email} failed: {e}")
+            print(f"[EMAIL ADVICE] On Render free tier, outbound SMTP ports 25/587 are restricted. Check BREVO_API_KEY on Render.")
 
 
 def generate_otp(length: int = 6) -> str:
@@ -289,8 +313,9 @@ def send_otp_email(to_email: str, otp_code: str, purpose: str, user_name: str = 
     print(f"               OTP CODE:  {otp_code} (Valid for {settings.OTP_EXPIRE_MINUTES} min)")
     print("=" * 65 + "\n")
 
-    if not settings.SMTP_PASSWORD:
-        print(f"[NOTE] SMTP_PASSWORD not set in .env. Enter Google App Password to enable live SMTP delivery.")
+    has_credentials = bool((settings.BREVO_API_KEY and settings.BREVO_API_KEY.strip()) or (settings.SMTP_PASSWORD and settings.SMTP_PASSWORD.strip()))
+    if not has_credentials:
+        print(f"[NOTE] Neither BREVO_API_KEY nor SMTP_PASSWORD set. Live delivery skipped.")
         return True
 
     try:
@@ -342,8 +367,9 @@ def send_event_registration_email(
     print(f"                    LOCATION:  {event_location}")
     print("=" * 65 + "\n")
 
-    if not settings.SMTP_PASSWORD:
-        print("[NOTE] SMTP_PASSWORD not set in .env. Live email simulated in console logs.")
+    has_credentials = bool((settings.BREVO_API_KEY and settings.BREVO_API_KEY.strip()) or (settings.SMTP_PASSWORD and settings.SMTP_PASSWORD.strip()))
+    if not has_credentials:
+        print("[NOTE] Neither BREVO_API_KEY nor SMTP_PASSWORD set. Live email simulated in console logs.")
         return True
 
     try:
@@ -494,9 +520,10 @@ def send_contact_notification_email(sender_name: str, sender_email: str, subject
     Sends an immediate email notification to administrator (info.karuneshtiwari@gmail.com)
     when a citizen or partner submits a message via the Contact Form.
     """
-    admin_recipient = "info.karuneshtiwari@gmail.com"
-    if not settings.SMTP_PASSWORD:
-        print(f"[CONTACT FORM NOTICE] SMTP_PASSWORD not configured. Message recorded: {sender_name} <{sender_email}>")
+    admin_recipient = settings.ADMIN_EMAIL or "info.karuneshtiwari@gmail.com"
+    has_credentials = bool((settings.BREVO_API_KEY and settings.BREVO_API_KEY.strip()) or (settings.SMTP_PASSWORD and settings.SMTP_PASSWORD.strip()))
+    if not has_credentials:
+        print(f"[CONTACT FORM NOTICE] Neither BREVO_API_KEY nor SMTP_PASSWORD configured. Message recorded: {sender_name} <{sender_email}>")
         return False
 
     try:
@@ -700,26 +727,18 @@ def send_bulk_broadcast_email(
         </html>
         """
 
-        try:
-            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=25) as server:
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-                server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-                for recipient in recipients:
-                    try:
-                        msg = MIMEMultipart("alternative")
-                        msg["Subject"] = subject
-                        msg["From"] = f"ParyavaranSanrakshan <{settings.SMTP_FROM_EMAIL}>"
-                        msg["To"] = recipient
-                        msg.attach(MIMEText(content, "plain", "utf-8"))
-                        msg.attach(MIMEText(html_body, "html", "utf-8"))
-                        server.sendmail(settings.SMTP_FROM_EMAIL, recipient, msg.as_string())
-                        print(f"[BULK EMAIL] Sent broadcast to: {recipient}")
-                    except Exception as err:
-                        print(f"[BULK EMAIL ERROR] Failed to send to {recipient}: {err}")
-        except Exception as e:
-            print(f"[BULK SMTP ERROR] Connection failed: {e}")
+        for recipient in recipients:
+            try:
+                msg = MIMEMultipart("alternative")
+                msg["Subject"] = subject
+                msg["From"] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_FROM_EMAIL}>"
+                msg["To"] = recipient
+                msg.attach(MIMEText(content, "plain", "utf-8"))
+                msg.attach(MIMEText(html_body, "html", "utf-8"))
+                _dispatch_smtp_background(msg, recipient)
+                print(f"[BULK EMAIL] Dispatched broadcast to: {recipient}")
+            except Exception as err:
+                print(f"[BULK EMAIL ERROR] Failed to dispatch to {recipient}: {err}")
 
     threading.Thread(target=_worker, daemon=True).start()
     return True
